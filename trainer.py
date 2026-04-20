@@ -35,6 +35,8 @@ def select_top_etfs(returns: pd.DataFrame, regime_info: dict, n: int = 3) -> lis
 def run_hhmm():
     print(f"=== P2-ETF-HHMM-REGIME Run: {config.TODAY} ===")
     df_master = data_manager.load_master_data()
+    df_master['Date'] = pd.to_datetime(df_master['Date'])
+    df_master = df_master.sort_values('Date')
     
     all_results = {}
     top_picks = {}
@@ -79,28 +81,35 @@ def run_hhmm():
                 }
         all_results[universe_name] = universe_metrics
     
-    # Shrinking windows: use a fixed-length window starting at each start year
+    # Shrinking windows: use data from start_year to start_year + LOOKBACK_WINDOW trading days
     shrinking_results = {}
     for start_year in config.SHRINKING_WINDOW_START_YEARS:
         start_date = pd.Timestamp(f"{start_year}-01-01")
-        end_date = start_date + pd.Timedelta(days=config.LOOKBACK_WINDOW * 2)  # enough to cover 504 trading days
-        window_label = f"{start_year}-{start_year + int(config.LOOKBACK_WINDOW / 252) + 1}"
+        window_label = f"{start_year}-{start_year + 2}"  # ~2 year window
         print(f"\n--- Shrinking Window: {window_label} ---")
         
-        mask = (df_master['Date'] >= start_date) & (df_master['Date'] <= end_date)
+        # Filter data from start_date onward
+        mask = df_master['Date'] >= start_date
         df_window = df_master[mask].copy()
+        
         if len(df_window) < config.MIN_OBSERVATIONS:
-            print(f"    Skipping (insufficient data)")
+            print(f"    Skipping (only {len(df_window)} observations)")
             continue
         
+        # Prepare returns matrix for all tickers
         returns_win = data_manager.prepare_returns_matrix(df_window, config.ALL_TICKERS)
         if len(returns_win) < config.MIN_OBSERVATIONS:
+            print(f"    Skipping (only {len(returns_win)} return observations)")
             continue
         
-        # Take exactly LOOKBACK_WINDOW days from the start
+        # Take exactly LOOKBACK_WINDOW days from the START of this filtered data
         recent_win = returns_win.iloc[:config.LOOKBACK_WINDOW]
         if len(recent_win) < config.MIN_OBSERVATIONS:
+            print(f"    Skipping (only {len(recent_win)} days in window)")
             continue
+        
+        # Print the actual date range being used
+        print(f"    Using data from {recent_win.index[0].date()} to {recent_win.index[-1].date()}")
         
         win_model = HierarchicalHMM(
             n_macro=config.N_MACRO_STATES,
@@ -113,16 +122,18 @@ def run_hhmm():
         
         window_top = {}
         for universe_name, tickers in config.UNIVERSES.items():
-            returns_u = data_manager.prepare_returns_matrix(df_window, tickers)
-            if len(returns_u) < config.MIN_OBSERVATIONS:
+            # For each universe, use the same window period
+            returns_u = recent_win[tickers] if all(t in recent_win.columns for t in tickers) else pd.DataFrame()
+            if returns_u.empty:
                 continue
-            recent_u = returns_u.iloc[:config.LOOKBACK_WINDOW]
-            top = select_top_etfs(recent_u, win_regime, n=1)
+            top = select_top_etfs(returns_u, win_regime, n=1)
             if top:
                 window_top[universe_name] = top[0]
         
         shrinking_results[window_label] = {
             'start_year': start_year,
+            'start_date': start_date.strftime('%Y-%m-%d'),
+            'end_date': recent_win.index[-1].strftime('%Y-%m-%d'),
             'regime': win_regime,
             'top_picks': window_top,
             'n_observations': len(recent_win)
