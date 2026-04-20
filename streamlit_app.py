@@ -21,6 +21,7 @@ st.markdown("""
     .hero-return { font-size: 2rem; font-weight: 600; color: white; }
     .return-positive { color: #28a745; font-weight: 600; }
     .return-negative { color: #dc3545; font-weight: 600; }
+    .info-note { font-size: 0.9rem; color: #666; margin-top: 0.5rem; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -56,10 +57,14 @@ def display_hero_card(ticker: str, exp_ret: float, regime: dict):
     <div class="hero-card">
         <div style="font-size: 1.2rem; opacity: 0.8;">🌐 TOP PICK (HHMM Regime‑Aware)</div>
         <div class="hero-ticker">{ticker}</div>
-        <div class="hero-return">Exp Return: {ret_str}</div>
+        <div class="hero-return">Exp Return (annualized): {ret_str}</div>
         <div style="margin-top: 1rem; color: rgba(255,255,255,0.9);">
             Regime: Macro {macro} → Sector {sector} → ETF {etf}
         </div>
+    </div>
+    <div class="info-note">
+        * Expected return is annualized (21‑day avg daily return × 252).<br>
+        * Regime states are numbered by the model; higher numbers often indicate stronger trends or volatility.
     </div>
     """, unsafe_allow_html=True)
 
@@ -68,9 +73,9 @@ def display_forecast_table(universe_data: dict):
     for ticker, m in universe_data.items():
         rows.append({
             'Ticker': ticker,
-            'Exp Return': f"{m['expected_return']*100:.2f}%"
+            'Exp Return (ann.)': f"{m['expected_return']*100:.2f}%"
         })
-    df = pd.DataFrame(rows).sort_values('Exp Return', ascending=False)
+    df = pd.DataFrame(rows).sort_values('Exp Return (ann.)', ascending=False)
     st.dataframe(df, use_container_width=True, hide_index=True)
 
 # --- Sidebar ---
@@ -88,6 +93,26 @@ st.sidebar.markdown(f"- ETF States: **{config.N_ETF_STATES}**")
 
 st.markdown('<div class="main-header">🌐 P2Quant HHMM Regime</div>', unsafe_allow_html=True)
 st.markdown('<div>Hierarchical Hidden Markov Model – Multi‑Scale Regime Detection</div>', unsafe_allow_html=True)
+
+with st.expander("📘 How to Interpret This Dashboard", expanded=False):
+    st.markdown("""
+    ### Expected Return
+    - Displayed as **annualized percentage** (21‑day average daily return × 252).
+    - Positive values suggest upward momentum; negative values suggest downward pressure.
+    
+    ### Regime States
+    The HHMM learns three levels of market regimes automatically from historical data:
+    - **Macro State (0–2)**: Broad market environment (e.g., low volatility, trending, or high stress).  
+      *Higher numbers often correspond to higher volatility or stronger directional moves.*
+    - **Sector State (0–1)**: Sector‑specific behavior within the current macro regime.
+    - **ETF State (0–1)**: ETF‑specific micro‑regime (e.g., mean‑reverting vs. trending).
+    
+    The exact meaning of each state number depends on the training data, but the model uses them to contextualize the expected return ranking.
+    
+    ### Top Pick Selection
+    - The engine ranks all ETFs in the universe by **21‑day annualized return**.
+    - The highest‑return ETF is shown as the hero pick, along with its current regime path.
+    """)
 
 if data is None:
     st.warning("No data available.")
@@ -141,7 +166,7 @@ with tab2:
                     rows.append({
                         'Window': label,
                         'Top Pick': top['ticker'],
-                        'Exp Return': f"{top['expected_return']*100:.2f}%"
+                        'Exp Return (ann.)': f"{top['expected_return']*100:.2f}%"
                     })
             if rows:
                 df = pd.DataFrame(rows)
