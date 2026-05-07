@@ -2,7 +2,7 @@ name: Daily HHMM Regime Run
 
 on:
   schedule:
-    - cron: '0 19 * * 1-5'
+    - cron: '0 03 * * 1-5'
   workflow_dispatch:
 
 jobs:
